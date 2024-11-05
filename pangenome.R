@@ -1,33 +1,34 @@
-# # summary page to use as metadata
+### Comparative Genomics of 43 Desulfobacteraceae
+## Roberto Siani
+# 2024
+
+## summary page to use as metadata
 #
-# datasets summary genome taxon Desulfobacterales --assembly-source RefSeq --as-json-lines | dataformat tsv genome --fields accession,annotinfo-featcount-gene-total,assmstats-contig-n50,assmstats-gc-percent,assmstats-number-of-contigs,assmstats-total-sequence-len,organism-name > metadata.tsv
+# datasets summary genome taxon Desulfobacteraceae --assembly-source RefSeq --as-json-lines | dataformat tsv genome --fields accession,annotinfo-featcount-gene-total,assmstats-contig-n50,assmstats-gc-percent,assmstats-number-of-contigs,assmstats-total-sequence-len,organism-name > metadata.tsv
 #
-# # download and rehydrate dataset
+## download and rehydrate dataset
 #
-# datasets download genome taxon Desulfobacterales --assembly-source RefSeq --dehydrated
+# datasets download genome taxon Desulfobacteraceae --assembly-source RefSeq --dehydrated
 #
 # datasets rehydrate --directory ./
 #
-#   # move to forever home
+## move to forever home
 #
-#   cd ncbi_dataset/data && mkdir mkdir ../../fna
+# cd ncbi_dataset/data && mkdir mkdir ../../fna
 #
 # for i in GCF*; do mv $i/*fna ../../fna/$i.fna; done
 #
 # cd ../../fna
 #
-# # remove weird candidatus and dereplicate
+## remove weird candidatus and dereplicate
 #
 # Assembly-Dereplicator/dereplicator.py genomes derep
 #
 # rm GCF_000516475.1.fna
 #
-# # back to base env
-#
 # orthofinder -f . -t 5 -og -y -S diamond_ultra_sens -I 3 -a 5
 
-
-# useful packages
+# base packages
 
 pacman::p_load(
   tidyverse,
@@ -60,7 +61,7 @@ theme_set(my_theme)
 ## load gene counts matrix (MCL I = 3)
 
 geneCounts <-
-  read_tsv("01_inData/pangenome/OrthoFinder/Results_Nov02/Orthogroups/Orthogroups.GeneCount.tsv") %>%
+  read_tsv("data/Orthogroups.GeneCount.tsv") %>%
   mutate(
     prev = rowSums(x = .[, 2:44] > 0)/43,
     partition = case_when(
@@ -77,7 +78,7 @@ janitor::tabyl(geneCounts, partition)
 # load metadata from ncbi datasets
 
 metaData =
-  read_tsv("01_inData/pangenome/metadata.tsv", name_repair = "universal") %>%
+  read_tsv("data/metadata.tsv", name_repair = "universal") %>%
   mutate(Organism.Name = gsub("Candidatus|uncultured", "", Organism.Name) %>%
            str_trim(),
          Genome = Assembly.Accession) %>%
@@ -144,7 +145,7 @@ heaps <- function(pan.matrix, n.perm = 100){
   return(p.hat)
 }
 
-# check completenness of the pangenome
+# check saturation of the pangenome
 
 set.seed(1)
 
@@ -175,7 +176,7 @@ res_rarefy %>%
 
 # TSNE
 
-.Random.seed = readRDS("seed_tsne.RDS")
+.Random.seed = readRDS("data/seed_tsne.RDS")
 
 res.tsne =
   Rtsne::Rtsne(dist(panMat, "binary"),
@@ -185,6 +186,8 @@ res.tsne =
 
 factoextra::fviz_nbclust(res.tsne$Y, kmeans)
 
+# clustering
+
 data_sne =
   kmeans(res.tsne$Y, 7) %>%
   broom::augment(res.tsne$Y) %>%
@@ -193,6 +196,8 @@ data_sne =
   mutate(Genus2 = if_else(str_detect(Genus, "Desulfonema"),
                           str_c(Genus, Species, sep = " "),
                           Genus))
+
+# plot (colors where changed in post-production)
 
 pal_oi = c( "#F0E442", "#0072B2", "#D55E00", "#CC79A7",
             "#E69F00", "#56B4E9","#009E73", "#999999")
@@ -216,61 +221,107 @@ plot_3 =
         legend.position = "none") +
   labs(x = "Dim.1", y = "Dim.2")
 
-cairo_pdf("04_figures/ultimate/tsne.pdf", 5.5, 5.5)
-plot_3
-dev.off()
-
-## now for the plot
-
-sulf_red_prot =
-  read_tsv("01_inData/sulf_red.csv") %>%
-  mutate(Operon =
-           case_when(
-             Op == 8 ~ "*dsr",
-             Op == 16 ~ "rnf2",
-             Op == 17 ~ "rnf1",
-             .default = gsub("_?[A-Z]?[0-9]?", "", Gene)) %>%
-           factor(levels = c("nss", "hpp", "ppa", "sat", "apr", "qmo", "dsr", "*dsr", "cdh",
-                             "met", "coo", "fol", "fhs", "fdh", "qrc", "rnf2", "rnf1", "nfn",
-                             "tmc", "nqr", "bam", "dch", "had", "oah", "bzd")))
-
-orthogroups =
-  read_tsv("01_inData/pangenome/OrthoFinder/Results_Nov02/Orthogroups/Orthogroups.tsv") %>%
-  separate_rows(Ds_variabilis_3be13, sep = ", ") %>%
-  filter(Ds_variabilis_3be13 %in% sulf_red_prot$Locustag |
-           grepl("HRM2_16920", `Dt_autotrophicum_HRM2`)) %>%
-  left_join(sulf_red_prot, by = c("Ds_variabilis_3be13" = "Locustag")) %>%
-  replace_na(list(Gene = "ppaC", Description = "PpaC: Pyrophosphate phospho-hydrolase"))
-
-write_tsv(orthogroups %>%
-            select(Orthogroup),
-          "01_inData/pangenome/sulf_pat_orthogroups.tsv",
-          col_names = F)
+# subset core genome and match with Ds locustags for interpretability
 
 core_genome =
-  read_fwf("01_inData/pangenome/ds_names.txt",
-           fwf_empty("01_inData/pangenome/ds_names.txt",
+  read_fwf("data/ds_names.txt",
+           fwf_empty("data/ds_names.txt",
                      col_names = c("Ds_variabilis_3be13", "Description"))) %>%
   mutate(Description = str_remove(Description, "Dvar_[0-9]* ")) %>%
-  left_join(read_tsv("01_inData/pangenome/OrthoFinder/Results_Nov02/Orthogroups/Orthogroups.tsv",
+  left_join(read_tsv("data/Orthogroups.tsv",
                      col_select = c(1, 6)) %>%
               separate_longer_delim(Ds_variabilis_3be13, ", "),
             multiple = "all") %>%
   select(-Ds_variabilis_3be13) %>%
-  left_join(read_tsv("01_inData/pangenome/OrthoFinder/Results_Nov02/Orthogroups/Orthogroups.tsv"),
+  left_join(read_tsv("data/Orthogroups.tsv"),
             by = "Orthogroup") %>%
   distinct()
 
-write_tsv(core_genome, "01_inData/pangenome_1123/core_genes.tsv")
+write_tsv(core_genome, "data/core_genes.tsv")
+
+## DCGs genes
+
+dcgs =
+  read_tsv("data/dcgs.csv") %>%
+  mutate(Operon =
+           case_when(
+             Op == 8 ~ "*dsr",
+             Op == 16 ~ "rnf2",
+             .default = gsub("_?[A-Z]?[0-9]?", "", Gene)) %>%
+           factor(levels = c("nss", "hpp", "ppa", "sat", "apr", "qmo", "dsr", "*dsr","qrc",
+                              "rnf2", "nfn", "tmc", "nqr", "cdh",
+                             "met", "coo", "fol", "fhs", "fdh", "pcc", "bm", "mce",
+                              "suc", "sdh", "fum", "mae",
+                             "mdh", "pyc", "por", "bam", "dch", "had", "oah", "bzd")))
+
+# orthogroups containing DCGs
+
+orthogroups =
+  read_tsv("data/Orthogroups.tsv") %>%
+  separate_rows(Ds_variabilis_3be13, sep = ", ") %>%
+  filter(Ds_variabilis_3be13 %in% dcgs$Locustag |
+           grepl("HRM2_16920", `Dt_autotrophicum_HRM2`) |
+           grepl("Dmul_07610", `Dc_multivorans_1be1`)) %>%
+  left_join(dcgs, by = c("Ds_variabilis_3be13" = "Locustag")) %>%
+  mutate(Gene = case_when(`Dt_autotrophicum_HRM2` == "HRM2_16920" ~ "ppaC",
+                          `Dc_multivorans_1be1` == "Dmul_07610" ~ "maeA",
+                          .default = Gene),
+         Description = case_when(`Dt_autotrophicum_HRM2` == "HRM2_16920" ~ "PpaC: Pyrophosphate phospho-hydrolase",
+                          `Dc_multivorans_1be1` == "Dmul_07610" ~ "MaeA: NAD-dependent malic enzyme", .default = Description),
+         Locustag = case_when(`Dt_autotrophicum_HRM2` == "HRM2_16920" ~ "HRM2_16920",
+                              `Dc_multivorans_1be1` == "Dmul_07610" ~ "Dmul_07610",
+                              .default = Ds_variabilis_3be13))
+
+
+write_tsv(orthogroups %>%
+            select(Orthogroup, Locustag),
+          "data/dcgs_orthogroups",
+          col_names = F)
+
+# now select all those orthogroups from Orthogroup_sequences and move them to a separate folder
+# to choose only the query DCGs for Uniref, concatenate orthogroups and then write the sequences to separate
+# fasta files
+
+
+target = dcgs$Locustag %>%
+  as_vector() %>%
+  set_names()
+
+
+multifasta = seqinr::read.fasta("data/all_dcgs.faa",
+                        seqtype = "AA",
+                        as.string = T,
+                        whole.header = F,
+                        strip.desc = F)
+
+# extract sequences
+
+results1 =
+  multifasta[target]
+
+map(names(results1),
+    ~ seqinr::write.fasta(sequences = results1[.x],
+                  names = .x,
+                  nbchar = 80,
+                  as.string = T,
+                  file.out = str_c("data/search_sequences/", .x, ".faa")))
+
+# we build alignment with uniref using jackhmmer
+# parallel -j 3 jackhmmer -N 1 -A {.}.sto --incE 1e-9 -E 1e-9 {} ~/00_lib/uniref90.fasta ::: *.faa
+# hmmbuild
+# hmmpress
+# prepare list of orthogroups and list of hmm
+# parallel -a ../hmm_id.txt -a ../orthogroups_id.txt --link hmmscan --tblout {2.}.tblout {1} ../dcgs_orthologs/{2}
+# from tblout to csv
+# for i in *.tblout; do grep -v "^#" $i | awk '{print $1","$3","$5","$6","7","$8","$9","$10}' > ${i%%.tblout}.csv; done
 
 # uniref ------------------------------------------------------------------
 
-list_ur_tblout =
-  list.files("01_inData/pangenome/OrthoFinder/Results_Nov02/sulfate_orthologs",
-             pattern = ".csv", full.names = T)
+# load hmmscan results
 
 ur_tblout =
-  list_ur_tblout %>%
+  list.files("data/search_sequences/",
+             pattern = ".csv", full.names = T) %>%
   map(~ read_csv(.x,
                  id = "Orthogroup",
                  col_names = c("target", "query", "evalue", "score"))) %>%
@@ -278,7 +329,7 @@ ur_tblout =
   mutate(Orthogroup =
            str_remove(
              Orthogroup,
-             "01_inData/pangenome/OrthoFinder/Results_Nov02/sulfate_orthologs/") %>%
+             "data/search_sequences/") %>%
            str_remove(".csv"),
          Genome = str_remove(query, "_C?[0-9]*$") %>%
            case_match(.,
@@ -290,6 +341,12 @@ ur_tblout =
              "HRM2" ~ "Dt_autotrophicum_HRM2",
              .default = .))
 
+write_csv(ur_tblout, "ur_tblout.csv")
+
+ur_tblout = read_csv("ur_tblout.csv")
+
+# prepare for plotting
+
 ur_simple =
   ur_tblout %>%
   group_by(Orthogroup, Genome) %>%
@@ -297,42 +354,44 @@ ur_simple =
   reframe(
     Genome,
     score,
-    scaled_score = (score - mean(score)) / sd(score)) %>%
+    scaled_score = (score - min(score)) / (max(score) - min(score))) %>%
   left_join(orthogroups %>%
               select(Orthogroup, Gene)) %>%
   left_join(metaData %>% select(Genome, Genus, Species)) %>%
   left_join(data_sne) %>%
-  left_join(sulf_red_prot) %>%
-  mutate(Operon =
-           case_when(
-             Op == 8 ~ "*dsr",
-             Op == 16 ~ "rnf2",
-             Op == 17 ~ "rnf1",
-             .default = gsub("_?[A-Z]?[0-9]?", "", Gene)) %>%
-           factor(levels = c("nss", "hpp", "ppa", "sat", "apr", "qmo", "dsr", "*dsr", "cdh",
-                             "met", "coo", "fol", "fhs", "fdh", "qrc", "rnf2", "rnf1", "nfn",
-                             "tmc", "nqr", "bam", "dch", "had", "oah", "bzd")),
-         Gene = as.factor(Gene))
+  left_join(dcgs) %>%
+  mutate(.cluster = .cluster %>% fct_rev())
 
-cairo_pdf("04_figures/ultimate/ur_heatmap_scaledBS.pdf", 40, 20)
-ggplot(ur_simple) +
-  geom_tile(data = ur_simple %>%
-              filter(Organism.Name %in% "Desulfosarcina variabilis 3be13"),
-            aes(y = Organism.Name,
-                x = Gene),
-            alpha = .25,
-            fill = "#999999") +
-  geom_point(aes(x = Gene,
-                 y = Organism.Name,
-                 size = scaled_score,
-                 alpha = scaled_score,
-                 fill = .cluster), stroke = 1.5, shape = 22) +
-  scale_size(range = c(0.15, 15)) +
-  scale_fill_manual(values = pal_oi) +
-  facet_grid(rows = vars(.cluster), cols = vars(Operon), space = "free", scales = "free") +
-  theme(panel.spacing.x = unit(0.5, "lines"), panel.spacing.y = unit(0.5, "lines"),
+# heatmap plot
+
+ur_simple %>%
+  ggplot() +
+  geom_point(aes(x = Organism.Name,
+                 y = Gene,
+                 fill = scaled_score),
+             stroke = 1,
+             color = "#555555",
+             shape = 22,
+             size = 7) +
+  facet_grid(Operon ~ .cluster,
+             space = "free",
+             scales = "free", switch = "y") +
+  scale_x_discrete(position = "top") +
+  scale_fill_binned(type = "gradient",
+                    breaks = c(0, 0.25, 0.5, 0.75, 1),
+                    low = "seashell",
+                    high = "steelblue") +
+  theme(panel.spacing.y = unit(0, "lines"),
+        panel.spacing.x = unit(0, "lines"),
         panel.border = element_rect(linewidth = 0.1),
-        axis.text.x = element_text(angle = 90, size = 20),
-        axis.text.y = element_text(size = 20))
-dev.off()
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text.y.left = element_blank(),
+        legend.text = element_text(size = 15),
+        legend.key.width = unit(3, "lines"),
+        axis.title.y = element_text(hjust = 0, vjust = 1.25, angle = 0),
+        axis.text.x.top = element_text(angle = 90, size = 15, hjust = 0),
+        axis.text.y = element_text(size = 15, angle = 0),
+        strip.placement = "inside")
 
+ggsave("heatmap.svg", width = 12, height = 24)
