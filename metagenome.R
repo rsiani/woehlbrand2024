@@ -66,15 +66,16 @@ metagenome_ncbi =
 metagenome_img =
   read_tsv("data/metadata_img.tsv",
           name_repair = "universal") %>%
-  left_join(read_csv("data/IMG.csv",
+  left_join(read_csv("data/IMG_additional_metadata.csv",
                      name_repair = "universal") %>%
               select(IMG.Genome.ID,
+                     NCBI.Bioproject.Accession,
                      site)) %>%
   mutate(n_genome = n(),
          .by = site) %>%
   select(accession = Bin.ID,
          n_genes = Gene.Count,
-         bioproject = Genome.Name,
+         bioproject = NCBI.Bioproject.Accession,
          n_bases = Total.Number.of.Bases,
          site,
          n_genome,
@@ -92,9 +93,7 @@ metagenome_img =
 # finally, we join IMG and NCBI metadata
 
 metadata_metagenome =
-  bind_rows(metagenome_ncbi, metagenome_img) %>%
-  mutate(site = as.factor(site) %>%
-           fct_lump_min(50, other_level = "Multiple Sites"))
+  bind_rows(metagenome_ncbi, metagenome_img)
 
 count(metadata_metagenome, site)
 
@@ -134,23 +133,67 @@ res_filtered =
     score > 2 * bias,
     dom_score > 2 * dom_bias,
     score < 2 * dom_score,
-    dom_evalue < 1/n_genes)
+    dom_evalue < 1/n_genes) %>%
+  filter(site %in% c("South China Sea",
+                     "Challenger Deep",
+                     "Gulf of Kutch",
+                     "Guaymas Basin",
+                     "San Francisco",
+                     "Benguela",
+                     "Black Sea",
+                     "Sumatra")) %>%
+  mutate(Gene = factor(Gene, levels =
+                         c("nss1","nss2",
 
-res_filtered %>%
-  count(Gene, site) %>% View()
+                           "hppA","ppaC","sat2","aprA","aprB","qmoA","qmoB","qmoC","dsrA", "dsrB","dsrC2","dsrD","dsrJ","dsrK","dsrM","dsrO","dsrP","qrcA","qrcB","qrcC","qrcD","rnfA2","rnfB2","rnfC2","rnfD2","rnfE2","rnfG2",
+
+                           "nfnA","nfnB","tmcA1","tmcB1","tmcC1","tmcD",
+
+                           "nqrA","nqrB","nqrC","nqrD","nqrE","nqrF",
+
+                           "cdhA","cdhC","cdhD","cdhE",
+
+                           "metF8","metH","cooS1","folD","fhs","fdhH", "pccB1","Sbm","mce",
+
+                           "sucC1","sucD1","sdhA3","sdhB3","sdhC3","fumAB","maeA","mdh4","pycB1","por2","bamB1","bamC1","dch","had","oah","bzdZ")),
+         Operon = factor(Operon, levels = c("nss", "hpp", "ppa", "sat", "apr", "qmo", "dsr", "*dsr","qrc",
+                                            "rnf2", "nfn", "tmc", "nqr", "cdh",
+                                            "met", "coo", "fol", "fhs", "fdh", "pcc", "bm", "mce",
+                                            "suc", "sdh", "fum", "mae",
+                                            "mdh", "pyc", "por", "bam", "dch", "had", "oah", "bzd")))
+
+
+         # most common contributing taxa (site x gene)
+
+         taxa_filter = res_filtered %>%
+           mutate(order2 =
+           as.factor(order) %>%
+           fct_na_value_to_level("Other")) %>%
+  reframe(order2 = unique(order2), .by = c(site, Gene)) %>%
+  count(order2) %>%
+  slice_max(n, n = 5) %>%
+  pull(order2)
 
 # plot taxonomical distribution across sites
+
 
 res_filtered %>%
   mutate(order2 =
            as.factor(order) %>%
            fct_na_value_to_level("Other") %>%
-           fct_lump_n(5, other_level = "Other") %>%
+           fct_other(keep = as.vector(taxa_filter)) %>%
            factor(levels = c("Other", "Anaerolineales",
-                             "Halobacteriales", "Pseudomonadales",
-                             "Desulfobacterales"))) %>%
+                             "Aminicenantales",
+                             "Pseudomonadales", "Desulfobacterales"))) %>%
+  # mutate(tot = n(), .by = c(site, Gene)) %>%
+  left_join(
+    metadata_metagenome %>%
+      summarise(tot = n_distinct(accession), .by = site)) %>%
+  summarise(detection  = n()/mean(tot), .by = c(Gene, order2, site, Operon)) %>%
+  filter(order2 %in% "Desulfobacterales") %>%
   ggplot() +
-  geom_bar(aes(y = Gene,
+  geom_col(aes(y = Gene,
+               x = detection,
                fill = order2),
            position = "stack",
            color = "white") +
@@ -166,8 +209,37 @@ res_filtered %>%
         strip.text = element_text(size = 12)) +
   facet_grid(Operon ~ site, scales = "free",
              space = "free_y") +
-  scale_fill_manual(values = c("grey95", "grey80", "grey65", "grey50", "#FFC107")) +
-  scale_x_log10()
+  scale_fill_manual(values = c(monochromeR::generate_palette("grey95", "go_darker", n_colours = 0),
+                               "#FFC107"))
 
+ggsave("metagenomes3.svg", width = 24, height = 12)
 
-ggsave("metagenomes.svg", width = 24, height = 12)
+# median relative contribution of each site x order combination
+
+res_filtered %>%
+  mutate(order2 =
+           as.factor(order) %>%
+           fct_na_value_to_level("Other") %>%
+           fct_other(keep = as.vector(taxa_filter)) %>%
+           factor(levels = c("Other", "Anaerolineales",
+                             "Aminicenantales",
+                             "Pseudomonadales", "Desulfobacterales"))) %>%
+  mutate(tot = n(), .by = c(site, Gene)) %>%
+  summarise(Perc_of_detections = n()/mean(tot), .by = c(site, Gene, order2)) %>%
+  summarise(median = median(Perc_of_detections),
+            sd = sd(Perc_of_detections), .by = c(site, order2)) %>%
+  write_csv("taxonomic_share_median_by_site.csv")
+
+metadata_metagenome %>%
+  filter(site %in% c("South China Sea",
+                     "Challenger Deep",
+                     "Gulf of Kutch",
+                     "Guaymas Basin",
+                     "San Francisco",
+                     "Benguela",
+                     "Black Sea",
+                     "Sumatra")) %>%
+  select(site, bioproject) %>%
+  distinct() %>%
+  arrange(site) %>%
+  write_csv("data/bioprojects_all.csv")

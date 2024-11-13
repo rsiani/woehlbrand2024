@@ -320,7 +320,7 @@ map(names(results1),
 # load hmmscan results
 
 ur_tblout =
-  list.files("data/search_sequences/",
+  list.files("data/search_sequences",
              pattern = ".csv", full.names = T) %>%
   map(~ read_csv(.x,
                  id = "Orthogroup",
@@ -395,3 +395,9 @@ ur_simple %>%
         strip.placement = "inside")
 
 ggsave("heatmap.svg", width = 12, height = 24)
+
+
+img2 = read_csv("01_inData/IMG.csv", name_repair = "universal")
+
+left_join(img2, read_csv("data/IMG.csv", name_repair = "universal")) %>%
+  write_csv("IMG_additional_metadata.csv")
