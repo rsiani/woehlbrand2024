@@ -395,9 +395,3 @@ ur_simple %>%
         strip.placement = "inside")
 
 ggsave("heatmap.svg", width = 12, height = 24)
-
-
-img2 = read_csv("01_inData/IMG.csv", name_repair = "universal")
-
-left_join(img2, read_csv("data/IMG.csv", name_repair = "universal")) %>%
-  write_csv("IMG_additional_metadata.csv")

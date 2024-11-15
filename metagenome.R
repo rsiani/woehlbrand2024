@@ -93,9 +93,21 @@ metagenome_img =
 # finally, we join IMG and NCBI metadata
 
 metadata_metagenome =
-  bind_rows(metagenome_ncbi, metagenome_img)
+  bind_rows(metagenome_ncbi, metagenome_img) %>%
+  filter(site %in% c("South China Sea",
+                     "Challenger Deep",
+                     "Gulf of Kutch",
+                     "Guaymas Basin",
+                     "San Francisco",
+                     "Benguela",
+                     "Black Sea",
+                     "Sumatra"))
 
-count(metadata_metagenome, site)
+summarise(metadata_metagenome,
+          gbp = sum(n_bases)/1e9,
+          n_genomes = n(),
+          .by  = site) %>%
+  write_csv("info_sites.csv")
 
 # load tabular results from hmmsearch
 
@@ -165,7 +177,7 @@ res_filtered =
 
          # most common contributing taxa (site x gene)
 
-         taxa_filter = res_filtered %>%
+taxa_filter = res_filtered %>%
            mutate(order2 =
            as.factor(order) %>%
            fct_na_value_to_level("Other")) %>%
@@ -176,7 +188,6 @@ res_filtered =
 
 # plot taxonomical distribution across sites
 
-
 res_filtered %>%
   mutate(order2 =
            as.factor(order) %>%
@@ -185,7 +196,6 @@ res_filtered %>%
            factor(levels = c("Other", "Anaerolineales",
                              "Aminicenantales",
                              "Pseudomonadales", "Desulfobacterales"))) %>%
-  # mutate(tot = n(), .by = c(site, Gene)) %>%
   left_join(
     metadata_metagenome %>%
       summarise(tot = n_distinct(accession), .by = site)) %>%
@@ -229,17 +239,3 @@ res_filtered %>%
   summarise(median = median(Perc_of_detections),
             sd = sd(Perc_of_detections), .by = c(site, order2)) %>%
   write_csv("taxonomic_share_median_by_site.csv")
-
-metadata_metagenome %>%
-  filter(site %in% c("South China Sea",
-                     "Challenger Deep",
-                     "Gulf of Kutch",
-                     "Guaymas Basin",
-                     "San Francisco",
-                     "Benguela",
-                     "Black Sea",
-                     "Sumatra")) %>%
-  select(site, bioproject) %>%
-  distinct() %>%
-  arrange(site) %>%
-  write_csv("data/bioprojects_all.csv")
